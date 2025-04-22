@@ -1,0 +1,13 @@
+# === Code for netlify.toml ===
+
+[build]
+  # Build command (should match Netlify UI)
+  command = "npm run build"
+  # Directory containing the built static assets AND serverless functions
+  publish = ".netlify"
+
+# Redirect rule needed for SvelteKit SPA-style routing on Netlify
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
