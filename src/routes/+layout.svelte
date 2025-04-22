@@ -1,97 +1,110 @@
+<!-- === Code for src/routes/+layout.svelte (with Sticky Header AND Icons) === -->
 <script lang="ts">
-    // --- IMPORTS ---
-	// Make sure the path to your global CSS file is correct
-	import '../app.css'; // Or '../app.pcss' if you are using that
-
+	// Imports (supabase, onMount, onDestroy, authStore, AdminIcon, LayoutData)
+	import '../app.css'; // Or '../app.pcss'
 	import { supabase } from '$lib/supabaseClient';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { authStore } from '$lib/stores/authStore';
 	import AdminIcon from '$lib/components/AdminIcon.svelte';
+	import type { LayoutData } from './$types';
 
-    // --- LIFECYCLE FUNCTION ---
-	// onMount runs only in the browser after the component is first added
+	// Receive data from +layout.ts load function
+	export let data: LayoutData;
+	$: siteSettings = data.siteSettings || {}; // Reactive siteSettings
+
+	// Realtime listener variable
+    let settingsListener: ReturnType<typeof supabase.channel> | null = null;
+
+	// onMount logic (Auth listener + Settings listener)
 	onMount(() => {
-		// Log message to confirm this code block is reached
 		console.log('[Root Layout] Component Mounted');
-
-		// Attempt to get the current session when the layout loads
 		supabase.auth.getSession().then(({ data: { session } }) => {
-			// Log the session found (or null)
-			console.log('[Root Layout] Initial Supabase Session:', session);
-			// Update the Svelte store with the session status
 			authStore.set(session);
-		}).catch(error => {
-            // Log any error during initial session check
-            console.error('[Root Layout] Error getting initial session:', error);
-        });
+		}).catch(error => { console.error('[Root Layout] Error getting initial session:', error); });
 
-		// Set up the listener for real-time authentication changes (login, logout)
-		const { data: authListener } = supabase.auth.onAuthStateChange(
-			(_event, session) => {
-				// Log the type of event and the resulting session
-				console.log('[Root Layout] Supabase Auth State Changed:', _event, session);
-				// Update the Svelte store whenever the auth state changes
-				authStore.set(session);
-			}
-		);
-
-        // Log that the listener was set up
+		const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+			authStore.set(session);
+		});
         console.log('[Root Layout] Auth state change listener attached.');
 
-		// Cleanup function: This runs when the layout component is destroyed
-		// It's crucial to prevent memory leaks by removing the listener
-		return () => {
-            console.log('[Root Layout] Unsubscribing from auth changes.'); // Log cleanup
+        // Settings Realtime Listener
+        if (settingsListener) supabase.removeChannel(settingsListener);
+        settingsListener = supabase.channel('public:site_settings:layout')
+            .on<import('$lib/types').SiteSettings>(
+                'postgres_changes', { event: 'UPDATE', schema: 'public', table: 'site_settings', filter: `id=eq.1` },
+                (payload) => {
+                    console.log('[Root Layout] Realtime settings update for header/footer!', payload);
+                    // IMPORTANT: Update the 'data' prop to trigger reactivity for $: siteSettings
+                    data = { ...data, siteSettings: payload.new };
+                } )
+            .subscribe((status, err) => { if (err) console.error('[Root Layout] Settings Realtime error:', err); });
+
+		return () => { // Cleanup
 			authListener?.unsubscribe();
+            if (settingsListener) { supabase.removeChannel(settingsListener).catch(console.error); }
 		};
 	});
-
-    // Log message to show the script block itself was processed
-    console.log('[Root Layout] Script block processed');
-
 </script>
 
-<!-- HTML Structure -->
-<div class="min-h-screen bg-black text-gray-200 font-sans">
+<!-- Main Structure -->
+<div class="min-h-screen bg-black font-sans text-gray-200">
+	<!-- Admin Icon -->
+	{#if $authStore} <AdminIcon /> {/if}
 
-	<!-- Admin Icon: Show only if logged in ($authStore has a value) -->
-	{#if $authStore}
-		<AdminIcon />
-	{/if}
+    <!-- Sticky Header Container -->
+    <header class="sticky top-0 z-50 border-b border-purple-900/20 bg-black/80 py-4 shadow-lg backdrop-blur-md animate-fadeIn">
+        <!-- Container to center content -->
+        <div class="container mx-auto flex items-center justify-between px-4">
+
+            <!-- Social Icons - Left Side (Right in RTL) -->
+            <!-- Added flex basis for better spacing -->
+            <div class="flex basis-1/4 items-center justify-start gap-4 md:gap-5">
+                 {#if siteSettings.instagram_url}
+					<a href={siteSettings.instagram_url} target="_blank" rel="noopener noreferrer" class="text-gray-400 transition duration-300 hover:scale-110 hover:text-pink-500 social-icon-glow" title="Instagram">
+                        <svg class="h-6 w-6 md:h-7 md:w-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" > <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/> </svg>
+					</a>
+				 {/if}
+				 {#if siteSettings.snapchat_url}
+					<a href={siteSettings.snapchat_url} target="_blank" rel="noopener noreferrer" class="text-gray-400 transition duration-300 hover:scale-110 hover:text-yellow-400 social-icon-glow" title="Snapchat">
+						<svg class="h-7 w-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"> <path d="M14.5 20.7a19.2 19.2 0 0 1-7 0C4.7 19.4 2.9 16.5 3 13.1c0-2.3 1.2-4.7 3.4-6.3C8.1 5.3 10 4.4 12 4.4c2 0 3.9.9 5.6 2.4 2.2 1.6 3.4 4 3.4 6.3.1 3.4-1.7 6.3-4.5 7.6Z"/> <path d="M14.7 13.3a1.2 1.2 0 0 1-2.4 0c0-.6.5-1.1 1.2-1.1.7 0 1.2.5 1.2 1.1Z"/> <path d="M9.3 13.3a1.2 1.2 0 0 1-2.4 0c0-.6.5-1.1 1.2-1.1.6 0 1.2.5 1.2 1.1Z"/> </svg>
+					</a>
+				 {/if}
+            </div>
+
+            <!-- Store Name Title - Center -->
+            <!-- Removed absolute positioning for simpler flex centering -->
+            <div class="flex basis-1/2 justify-center">
+                 <h1 class="text-center text-3xl font-bold text-white sm:text-4xl md:text-5xl title-glow">
+                    {siteSettings.store_name || 'بعيد وقريب'}
+                 </h1>
+            </div>
+
+             <!-- Spacer on Right Side (Left in RTL) for balance -->
+             <div class="basis-1/4"></div> <!-- Takes up space to help center title -->
+
+        </div>
+    </header>
 
 	<!-- Main content area -->
-	<main class="container mx-auto px-4 py-8">
-		<slot /> <!-- Page content goes here -->
+	<main class="container mx-auto px-4 py-8 pt-10 md:pt-12">
+		<slot />
 	</main>
 
-	<!-- Footer will be added here later -->
+	<!-- Footer is rendered inside the specific page (+page.svelte) -->
 
 </div>
 
-<!-- CSS Styles -->
+<!-- Styles -->
 <style>
-	/* Import an Arabic font from Google Fonts */
 	@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-
-	/* Apply global styles using the :global() modifier */
-	:global(html) {
-		direction: rtl; /* Set text direction to Right-to-Left */
-		scroll-behavior: smooth;
-	}
-
-	:global(body) {
-		font-family: 'Tajawal', sans-serif; /* Apply the Arabic font globally */
-		/* Tailwind handles the background/text color via the @apply in app.css/app.pcss */
-	}
-
-	/* Basic glowing effect class we can reuse later */
-	.glow-effect {
-		transition: all 0.3s ease-in-out;
-		box-shadow: 0 0 5px rgba(255, 255, 255, 0.3), 0 0 10px rgba(255, 255, 255, 0.2),
-			0 0 15px rgba(255, 255, 255, 0.1);
-	}
-	.glow-effect:hover {
-		box-shadow: 0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.4),
-			0 0 30px rgba(255, 255, 255, 0.3);
-	}
+	:global(html) { direction: rtl; scroll-behavior: smooth; scroll-padding-top: 100px; }
+	:global(body) { font-family: 'Tajawal', sans-serif; }
+	.glow-effect { transition: all 0.3s ease-in-out; box-shadow: 0 0 5px rgba(255, 255, 255, 0.3), 0 0 10px rgba(255, 255, 255, 0.2), 0 0 15px rgba(255, 255, 255, 0.1); }
+	.glow-effect:hover { box-shadow: 0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.4), 0 0 30px rgba(255, 255, 255, 0.3); }
+    @keyframes titlePulseGlow { 0%, 100% { text-shadow: 0 0 10px rgba(216, 180, 254, 0.5), 0 0 20px rgba(192, 132, 252, 0.3), 0 0 35px rgba(167, 139, 250, 0.2); } 50% { text-shadow: 0 0 15px rgba(216, 180, 254, 0.7), 0 0 30px rgba(192, 132, 252, 0.45), 0 0 50px rgba(167, 139, 250, 0.3); } }
+	.title-glow { animation: titlePulseGlow 5s infinite ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+	.animate-fadeIn { animation: fadeIn 0.8s ease-out forwards; }
+    .social-icon-glow { filter: drop-shadow(0 0 4px rgba(200, 200, 255, 0.2)); }
+	.social-icon-glow:hover { filter: drop-shadow(0 0 8px currentColor); }
 </style>

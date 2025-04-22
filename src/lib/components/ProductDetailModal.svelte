@@ -1,11 +1,12 @@
-<!-- === Code for src/lib/components/ProductDetailModal.svelte (Mobile Centering Fix) === -->
+<!-- === Code for src/lib/components/ProductDetailModal.svelte (Smaller Size - FINAL COMMENT FIX) === -->
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 	import type { Product } from '$lib/types';
 	import { supabase } from '$lib/supabaseClient';
 
 	// Props
 	export let product: Product;
+	export let position: { top: number; left: number, width: number, height: number };
 
 	// State
 	let selectedSize: string | null = null;
@@ -18,111 +19,76 @@
 	let successMessage: string | null = null;
 	let maxQuantity = 1;
 
-	// Event Dispatcher
+	let modalContentElement: HTMLElement;
+	let calculatedTop = '50%';
+	let calculatedTransform = 'translateY(-50%)';
+	let isVisible = false;
+	const buffer = 16;
+
 	const dispatch = createEventDispatcher<{ close: {} }>();
 
-	// Reactive calculations
-	$: availableSizes = Object.entries(product.sizes_stock ?? {})
-		.filter(([size, stock]) => stock > 0)
-		.map(([size]) => size);
+	// --- Lifecycle & Positioning Logic ---
+	onMount(async () => {
+		await tick();
+		calculateVerticalPosition();
+		setTimeout(() => { isVisible = true; }, 10);
+	});
+
+	function calculateVerticalPosition() {
+		if (!modalContentElement || !position) return;
+		const modalRect = modalContentElement.getBoundingClientRect();
+        const modalHeight = modalRect.height;
+		const vh = window.innerHeight;
+        const scrollY = window.scrollY;
+		let potentialTop = position.top + scrollY + (position.height / 2) - (modalHeight / 2);
+
+        // Adjust Top
+        if (potentialTop < scrollY + buffer) { potentialTop = scrollY + buffer; }
+        if (potentialTop + modalHeight > scrollY + vh - buffer) {
+            potentialTop = scrollY + vh - modalHeight - buffer;
+            if (potentialTop < scrollY + buffer) { potentialTop = buffer; }
+        }
+		calculatedTop = `${Math.round(potentialTop)}px`;
+        calculatedTransform = 'translateY(0%)';
+	}
+
+	// --- Form Logic ---
+	$: availableSizes = Object.entries(product.sizes_stock ?? {}).filter(([s, st]) => st > 0).map(([s]) => s);
 	$: isInStock = availableSizes.length > 0;
-
-	// Update max quantity when size changes
-	$: {
-		if (selectedSize && product.sizes_stock && product.sizes_stock[selectedSize]) {
-			maxQuantity = product.sizes_stock[selectedSize];
-			if (quantity > maxQuantity) {
-				quantity = maxQuantity > 0 ? 1 : 0;
-			}
-			if (maxQuantity <= 0) {
-				selectedSize = null;
-			}
-		} else {
-			maxQuantity = 0;
-			quantity = 0;
-		}
-	}
-
-	// Ensure quantity doesn't exceed max
-	function handleQuantityChange(e: Event) {
-		const input = e.target as HTMLInputElement;
-		let val = parseInt(input.value, 10);
-		if (isNaN(val) || val < 1) {
-			val = 1;
-		}
-		if (selectedSize && val > maxQuantity) {
-			val = maxQuantity;
-		}
-		quantity = val;
-		input.value = quantity.toString();
-	}
-
-	function close() {
-		dispatch('close');
-	}
-
-	async function handleOrderSubmit() {
-		submitting = true;
-		error = null;
-		successMessage = null;
-
-		// Validations
+	$: { if (selectedSize && product.sizes_stock && product.sizes_stock[selectedSize]) { maxQuantity = product.sizes_stock[selectedSize]; if (quantity > maxQuantity) quantity = maxQuantity > 0 ? 1 : 0; if (maxQuantity <= 0) selectedSize = null; } else { maxQuantity = 0; quantity = 0; } }
+	function handleQuantityChange(e: Event) { const i = e.target as HTMLInputElement; let v = parseInt(i.value, 10); if (isNaN(v) || v < 1) v = 1; if (selectedSize && v > maxQuantity) v = maxQuantity; quantity = v; i.value = quantity.toString(); }
+	function close() { dispatch('close'); }
+	async function handleOrderSubmit() { /* Submit Logic (unchanged) */
+        submitting = true; error = null; successMessage = null;
 		if (!customerName.trim()) { error = 'يرجى إدخال الاسم.'; submitting = false; return; }
 		if (!customerPhone.trim()) { error = 'يرجى إدخال رقم الهاتف.'; submitting = false; return; }
-		if (!customerAddress.trim()) { error = 'يرجى إدخال العنوان بالتفصيل.'; submitting = false; return; }
+        if (!customerAddress.trim()) { error = 'يرجى إدخال العنوان بالتفصيل.'; submitting = false; return; }
 		if (!selectedSize) { error = 'يرجى اختيار المقاس المطلوب.'; submitting = false; return; }
-		if (quantity < 1 || quantity > maxQuantity) { error = `الكمية المطلوبة غير متوفرة لهذا المقاس (المتوفر: ${maxQuantity}).`; submitting = false; return; }
-
-		// Prepare payload
-		const orderPayload = {
-			customer_name: customerName.trim(), customer_phone: customerPhone.trim(), customer_address: customerAddress.trim(),
-			order_details: { productId: product.id, productName: product.name, size: selectedSize, quantity: quantity, price: product.price, imageUrl: product.images && product.images.length > 0 ? product.images[0] : null },
-			status: 'new', total_price: product.price * quantity
-		};
-
-		try {
-			// Re-check stock
-			const { data: currentProductData, error: fetchError } = await supabase.from('products').select('sizes_stock').eq('id', product.id).single();
-			if (fetchError || !currentProductData) { throw new Error("Could not verify product stock."); }
-			const currentStock = currentProductData.sizes_stock[selectedSize] ?? 0;
-			if (quantity > currentStock) { error = `نفدت الكمية للمقاس ${selectedSize}. (المتوفر الآن: ${currentStock})`; submitting = false; return; }
-
-			// Insert order
-			const { error: insertError } = await supabase.from('orders').insert([orderPayload]);
-			if (insertError) throw insertError;
-
-			// Update Stock
-			const newStockLevel = currentStock - quantity;
-			const updatedSizesStock = { ...currentProductData.sizes_stock };
-			updatedSizesStock[selectedSize] = newStockLevel;
-			const { error: stockUpdateError } = await supabase.from('products').update({ sizes_stock: updatedSizesStock }).eq('id', product.id);
-			if (stockUpdateError) { console.error("CRITICAL: Stock update failed:", product.id, stockUpdateError); }
-			else { console.log("Stock updated successfully for product", product.id); }
-
-			successMessage = 'تم إرسال طلبك بنجاح! سنتواصل معك قريباً.';
-			setTimeout(() => { customerName = ''; customerPhone = ''; customerAddress = ''; selectedSize = null; quantity = 1; close(); }, 2500);
-
-		} catch (err: any) {
-			console.error('Order submission error:', err);
-			if (err.message.includes('violates row-level security policy')) { error = 'خطأ في الأذونات.'; }
-			else { error = 'حدث خطأ غير متوقع: ' + err.message; }
-		} finally { submitting = false; }
-	}
+        if (quantity < 1 || quantity > maxQuantity) { error = `الكمية المطلوبة غير متوفرة لهذا المقاس (المتوفر: ${maxQuantity}).`; submitting = false; return; }
+		const orderPayload = { customer_name: customerName.trim(), customer_phone: customerPhone.trim(), customer_address: customerAddress.trim(), order_details: { productId: product.id, productName: product.name, size: selectedSize, quantity: quantity, price: product.price, imageUrl: product.images && product.images.length > 0 ? product.images[0] : null }, status: 'new', total_price: product.price * quantity };
+		try { const { data: currentProductData, error: fetchError } = await supabase.from('products').select('sizes_stock').eq('id', product.id).single(); if (fetchError || !currentProductData) { throw new Error("Could not verify product stock."); } const currentStock = currentProductData.sizes_stock[selectedSize] ?? 0; if (quantity > currentStock) { error = `نفدت الكمية للمقاس ${selectedSize}. (المتوفر الآن: ${currentStock})`; submitting = false; return; } const { error: insertError } = await supabase.from('orders').insert([orderPayload]); if (insertError) throw insertError; const newStockLevel = currentStock - quantity; const updatedSizesStock = { ...currentProductData.sizes_stock }; updatedSizesStock[selectedSize] = newStockLevel; const { error: stockUpdateError } = await supabase.from('products').update({ sizes_stock: updatedSizesStock }).eq('id', product.id); if (stockUpdateError) { console.error("CRITICAL: Stock update failed:", product.id, stockUpdateError); } else { console.log("Stock updated successfully for product", product.id); } successMessage = 'تم إرسال طلبك بنجاح! سنتواصل معك قريباً.'; setTimeout(() => { customerName = ''; customerPhone = ''; customerAddress = ''; selectedSize = null; quantity = 1; close(); }, 2500); } catch (err: any) { console.error('Order submission error:', err); if (err.message.includes('violates row-level security policy')) { error = 'خطأ في الأذونات.'; } else { error = 'حدث خطأ غير متوقع: ' + err.message; } } finally { submitting = false; }
+    }
 </script>
 
-<!-- Modal Overlay -->
-<!-- Updated classes for better mobile centering -->
+<!-- Separate Overlay -->
 <div
-	class="fixed inset-0 z-[60] flex justify-center items-start overflow-y-auto bg-black/80 p-4 pt-10 backdrop-blur-sm animate-fadeIn md:items-center md:pt-4"
-	on:click|self={close}
-	role="dialog" aria-modal="true" aria-labelledby="product-modal-title"
+	class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm animate-fadeIn"
+	on:click={close}
+	aria-hidden="true"
+></div>
+
+<!-- Positioned Modal Container -->
+<div
+    class="absolute z-[70] transition-opacity duration-200 ease-out {isVisible ? 'opacity-100' : 'opacity-0'} max-w-md"
+    style="top: {calculatedTop}; left: 50%; transform: translateX(-50%) {calculatedTransform === 'translateY(-50%)' ? ' translateY(-50%)' : ''}; width: 90%; padding-left: {buffer}px; padding-right: {buffer}px;"
+    role="dialog" aria-modal="true" aria-labelledby="product-modal-title"
 >
 	<!-- Modal Content Box -->
-    <!-- Updated classes to work with flex centering and overlay scroll -->
 	<form
+		bind:this={modalContentElement}
 		on:submit|preventDefault={handleOrderSubmit}
-		class="relative w-full max-w-lg rounded-xl border border-purple-900/30 bg-gradient-to-br from-gray-950 via-black to-gray-950 shadow-2xl shadow-purple-950/30 mb-auto mt-auto md:mb-0 md:mt-0"
-	>
+		class="relative w-full rounded-xl border border-purple-900/30 bg-gradient-to-br from-gray-950 via-black to-gray-950 shadow-2xl shadow-purple-950/30 max-h-[80vh] overflow-y-auto flex flex-col"
+        > <!-- FIXED: Removed invalid comment from class -->
         <!-- Close Button -->
         <button type="button" on:click={close} aria-label="Close" class="absolute top-3 right-3 text-gray-500 hover:text-red-400 transition z-10 p-1">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /> </svg>
@@ -135,7 +101,7 @@
         </div>
 
         <!-- Form Area -->
-        <div class="p-6 space-y-4 flex-grow"> <!-- Changed outer form to div -->
+        <div class="p-6 space-y-4 flex-grow">
             <h2 id="product-modal-title" class="text-2xl font-semibold text-purple-300 title-glow mb-1">{product.name}</h2>
             <p class="text-2xl font-bold text-purple-400 mb-3">{product.price} <span class="text-sm font-normal text-gray-400"></span></p>
             {#if product.description} <p class="text-sm text-gray-400 mb-4">{product.description}</p> {/if}
@@ -145,19 +111,10 @@
             <div class="space-y-2">
                 <label class="label !mb-1">اختيار المقاس <span class="text-red-500">*</span></label>
                 <div class="flex flex-wrap gap-2">
-                    {#each availableSizes as size (size)}
-                         <button type="button" on:click={() => selectedSize = size} class="rounded-md px-3 py-1.5 text-sm border transition duration-150 ease-in-out" class:bg-purple-700={selectedSize === size} class:text-white={selectedSize === size} class:border-purple-600={selectedSize === size} class:bg-gray-800={selectedSize !== size} class:text-gray-300={selectedSize !== size} class:border-gray-700={selectedSize !== size} class:hover:bg-purple-800={selectedSize !== size} class:hover:border-purple-700={selectedSize !== size}>
-                           {size} <span class="text-xs opacity-80">({product.sizes_stock[size]} متوفر)</span>
-                         </button>
-                    {/each}
+                    {#each availableSizes as size (size)} <button type="button" on:click={() => selectedSize = size} class="rounded-md px-3 py-1.5 text-sm border transition duration-150 ease-in-out" class:bg-purple-700={selectedSize === size} class:text-white={selectedSize === size} class:border-purple-600={selectedSize === size} class:bg-gray-800={selectedSize !== size} class:text-gray-300={selectedSize !== size} class:border-gray-700={selectedSize !== size} class:hover:bg-purple-800={selectedSize !== size} class:hover:border-purple-700={selectedSize !== size}> {size} <span class="text-xs opacity-80">({product.sizes_stock[size]} متوفر)</span> </button> {/each}
                 </div>
             </div>
-             {#if selectedSize}
-                 <div>
-                    <label for="quantity" class="label">الكمية (المتوفر: {maxQuantity}) <span class="text-red-500">*</span></label>
-                    <input type="number" id="quantity" bind:value={quantity} on:input={handleQuantityChange} min="1" max={maxQuantity} required disabled={maxQuantity < 1} class="input-field w-24 text-center" />
-                 </div>
-             {/if}
+             {#if selectedSize} <div> <label for="quantity" class="label">الكمية (المتوفر: {maxQuantity}) <span class="text-red-500">*</span></label> <input type="number" id="quantity" bind:value={quantity} on:input={handleQuantityChange} min="1" max={maxQuantity} required disabled={maxQuantity < 1} class="input-field w-24 text-center" /> </div> {/if}
             {:else} <p class="rounded border border-red-600 bg-red-900/50 p-3 text-center text-red-300">عذراً، هذا المنتج غير متوفر حالياً.</p> {/if}
 
             {#if isInStock && selectedSize}
@@ -171,7 +128,7 @@
             {/if}
         </div> <!-- End Form Area -->
 	</form> <!-- End Modal Content Box -->
-</div> <!-- End Modal Overlay -->
+</div> <!-- End Absolutely Positioned Modal Container -->
 
 <style>
 	.label { @apply mb-1.5 block text-sm font-medium text-gray-300; }
