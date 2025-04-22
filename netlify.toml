@@ -1,13 +1,15 @@
-# === Code for netlify.toml ===
+# === Code for netlify.toml (Redirects Removed) ===
 
 [build]
   # Build command (should match Netlify UI)
   command = "npm run build"
+
   # Directory containing the built static assets AND serverless functions
+  # The adapter typically puts everything needed here.
   publish = ".netlify"
 
-# Redirect rule needed for SvelteKit SPA-style routing on Netlify
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+  # Optional: Specify functions directory if different, but adapter usually handles it.
+  # functions = ".netlify/functions-internal"
+
+# [[redirects]] section is intentionally removed as requested by the adapter error message.
+# The @sveltejs/adapter-netlify will handle routing configuration automatically.
