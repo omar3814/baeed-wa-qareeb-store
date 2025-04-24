@@ -1,22 +1,31 @@
-// src/lib/types.ts
+// === Code for src/lib/types.ts (Updated Product Type) ===
 
-// Defines the structure of a Product object based on our database table
-export interface Product {
+export interface Category {
 	id: string;
-	created_at: string; // Supabase timestamps are strings by default
+	created_at: string;
 	name: string;
-	description?: string | null; // Optional string
-	price: number;
-	images?: string[] | null; // Optional array of image URL strings
-	sizes_stock: { [size: string]: number }; // An object where keys are size strings (e.g., "S") and values are stock numbers
+	sort_order?: number | null;
 }
 
-// Defines the structure for the Site Settings object
+export interface Product {
+	id: string;
+	created_at: string;
+	name: string;
+	description?: string | null;
+	price: number;
+	images?: string[] | null; // Allows multiple image URLs
+	sizes_stock: { [size: string]: number };
+	category_id?: string | null; // Foreign Key
+    // Used when fetching product data with category name joined
+    categories?: { id?: string; name: string } | null;
+}
+
 export interface SiteSettings {
-	id: number; // Should always be 1
+	id: number;
 	updated_at: string;
 	store_name: string;
 	banner_image_url?: string | null;
+    logo_image_url?: string | null;
 	collection_title: string;
 	phone_number?: string | null;
 	address: string;
@@ -24,4 +33,22 @@ export interface SiteSettings {
 	delivery_message: string;
 	instagram_url?: string | null;
 	snapchat_url?: string | null;
+}
+
+export interface Order {
+    id: string;
+    created_at: string;
+    customer_name: string;
+    customer_phone: string;
+    customer_address: string;
+    order_details: {
+        productId?: string;
+        productName?: string;
+        size?: string;
+        quantity?: number;
+        price?: number;
+        imageUrl?: string;
+    };
+    status: string;
+    total_price: number;
 }
