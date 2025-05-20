@@ -1,6 +1,40 @@
 <!-- === Code for src/routes/admin/dashboard/+page.svelte (Elegant Styling) === -->
 <script lang="ts">
-	// No TypeScript needed here
+	// Import Supabase client
+	import { supabase } from '$lib/supabaseClient';
+
+	// THIS PASSWORD MUST EXACTLY MATCH THE ONE IN YOUR LOGIN PAGE CODE
+	// from src/routes/admin/login/+page.svelte
+	const PASSWORD_TO_SET_IN_SUPABASE = 'SillyYara123';
+
+	async function forceSetSupabasePassword() {
+		const confirmation = confirm(
+			`This will attempt to change the password for the currently logged-in Supabase user ` +
+			`to: "${PASSWORD_TO_SET_IN_SUPABASE}".\n\n` +
+			`This should be the same password your login page code expects.\n\n` +
+			`Are you sure you want to proceed?`
+		);
+
+		if (!confirmation) {
+			alert('Password update cancelled.');
+			return;
+		}
+
+		const { data, error } = await supabase.auth.updateUser({
+			password: PASSWORD_TO_SET_IN_SUPABASE
+		});
+
+		if (error) {
+			alert('Error updating password in Supabase: ' + error.message);
+			console.error('Supabase password update error:', error);
+		} else {
+			alert(
+				'Password successfully updated in Supabase to: "' + PASSWORD_TO_SET_IN_SUPABASE + '"\n\n' +
+				'Please LOG OUT completely and then try logging back in manually using "Yara" and this new password.'
+			);
+			console.log('Supabase password update success:', data);
+		}
+	}
 </script>
 
 <svelte:head>
@@ -18,6 +52,27 @@
 	<p class="animate-fadeInUp text-center text-lg text-gray-300 sm:text-right">
 		اختاري القسم الذي ترغبين بإدارته من البطاقات أدناه:
 	</p>
+
+    <!-- TEMPORARY SECTION - REMOVE AFTER USE -->
+    <div style="margin-top: 30px; padding: 15px; border: 2px solid red; background-color: #ffe0e0; border-radius: 8px; text-align: center;">
+        <h2 style="color: red; font-weight: bold; font-size: 1.25rem; margin-bottom: 10px;">أداة مزامنة كلمة المرور المؤقتة</h2>
+        <p style="color: #333; margin-bottom: 10px;">
+            استخدمي هذا الزر فقط لمزامنة كلمة مرور Supabase للمستخدم المسؤول
+            (<code>omarhamam13@yahoo.com</code>) مع كلمة المرور المضمنة في كود صفحة تسجيل الدخول
+            (حالياً "<strong>{PASSWORD_TO_SET_IN_SUPABASE}</strong>").
+        </p>
+        <button
+            on:click={forceSetSupabasePassword}
+            style="background-color: #dc3545; color: white; padding: 10px 15px; border: none; cursor: pointer; font-size: 16px; margin-top: 10px; border-radius: 5px;"
+        >
+            فرض تعيين كلمة مرور Supabase إلى "{PASSWORD_TO_SET_IN_SUPABASE}"
+        </button>
+        <p style="margin-top: 10px; color: #555;">
+            <small><strong>مهم:</strong> بعد تسجيل الدخول يدوياً بنجاح، قومي بإزالة هذا القسم المؤقت بالكامل من الكود الخاص بك.</small>
+        </p>
+    </div>
+    <!-- END OF TEMPORARY SECTION -->
+
 
 	<!-- Grid for Stylish Link Cards -->
 	<div class="grid grid-cols-1 gap-8 pt-4 md:grid-cols-2 lg:gap-10">
