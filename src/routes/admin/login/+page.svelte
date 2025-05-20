@@ -31,7 +31,7 @@
     		try {
                 console.log('[Login Page] Checking username/password input'); // Debug log
     			// --- User Input Check ---
-    			if (usernameInput !== 'Yara' || password !== 'Meow') {
+    			if (usernameInput !== 'Yara' || password !== 'SillyYara123') {
                     console.log('[Login Page] Input check failed'); // Debug log
     				throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
     			}
